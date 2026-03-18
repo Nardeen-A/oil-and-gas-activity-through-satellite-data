@@ -1,0 +1,335 @@
+/****************************************
+ MONTHLY RAW PANEL — 1x1 KM GRID
+ IRAQI KURDISTAN + KIRKUK ONLY
+ FOR OIL & GAS FEATURE EXTRACTION
+ CORRECTED VERSION
+****************************************/
+
+var START_YEAR = 2012;
+var END_YEAR   = 2024;
+
+// =========================
+// PROVINCE-BASED ROI
+// =========================
+var provinces = ee.FeatureCollection('FAO/GAUL/2015/level1');
+
+// Iraq only
+var iraq = provinces.filter(ee.Filter.eq('ADM0_NAME', 'Iraq'));
+
+// Debug: inspect exact province names in GAUL
+print('Iraq ADM1 names:', iraq.aggregate_array('ADM1_NAME').distinct().sort());
+
+// Target provinces
+var targetProvinces = iraq.filter(
+  ee.Filter.inList('ADM1_NAME', [
+    'Dahuk',
+    'Erbil',
+    'Sulaymaniyah',
+    'Kirkuk'
+  ])
+);
+
+// Final ROI
+var roi = targetProvinces.geometry();
+
+// =========================
+// TRUE 1 KM GRID
+// =========================
+var GRID_PROJ = ee.Projection('EPSG:32638'); // UTM 38N
+var GRID_SIZE = 1000; // 1 km
+
+function makeGrid(region, proj, cellSizeMeters) {
+  var grid = region.coveringGrid(proj, cellSizeMeters);
+
+  grid = grid.map(function(f) {
+    var geom = f.geometry();
+    var centroid = geom.centroid(1);
+    var coords = centroid.coordinates();
+
+    return ee.Feature(geom, {
+      grid_id: ee.String(f.get('system:index')),
+      lon: coords.get(0),
+      lat: coords.get(1)
+    });
+  });
+
+  return grid;
+}
+
+var grid = makeGrid(roi, GRID_PROJ, GRID_SIZE);
+
+// =========================
+// HELPERS
+// =========================
+
+// fully masked empty band
+function emptyMaskedBand(name) {
+  return ee.Image.constant(0)
+    .rename(name)
+    .updateMask(ee.Image.constant(0))
+    .toFloat();
+}
+
+// safe mean that preserves masking
+function safeMean(ic, bandName, outName) {
+  return ee.Image(
+    ee.Algorithms.If(
+      ic.size().gt(0),
+      ic.mean().select([bandName], [outName]).toFloat(),
+      emptyMaskedBand(outName)
+    )
+  );
+}
+
+// replace null properties after reduceRegions only
+function fillNullProps(f) {
+  var props = [
+    'ntl', 'cf_cvg', 'lst_night_c',
+    'B4_med', 'B8_med', 'B11_med',
+    'ndvi', 'ndbi', 's2_count'
+  ];
+
+  var values = props.map(function(p) {
+    var v = f.get(p);
+    return ee.Algorithms.If(ee.Algorithms.IsEqual(v, null), -9999, v);
+  });
+
+  var dict = ee.Dictionary.fromLists(props, values);
+  return f.set(dict);
+}
+
+// =========================
+// MODIS NIGHT LST QA MASK
+// =========================
+function maskModisNightLST(img) {
+  var qc = img.select('QC_Night');
+  var mandatoryQA = qc.bitwiseAnd(3); // bits 0-1
+  var keep = mandatoryQA.lte(1);      // keep 00 and 01
+
+  return img.updateMask(keep);
+}
+
+// =========================
+// SENTINEL-2 CLEANING
+// =========================
+function cleanS2(img) {
+  var scl = img.select('SCL');
+
+  var keep = scl.neq(3)   // cloud shadow
+    .and(scl.neq(8))      // cloud medium probability
+    .and(scl.neq(9))      // cloud high probability
+    .and(scl.neq(10))     // cirrus
+    .and(scl.neq(11));    // snow/ice
+
+  return img
+    .updateMask(keep)
+    .select(['B4', 'B8', 'B11'])
+    .divide(10000)   // rescale SR to reflectance
+    .toFloat();
+}
+
+// =========================
+// MONTH BUILDER
+// =========================
+function buildMonth(year, month) {
+  year = ee.Number(year);
+  month = ee.Number(month);
+
+  var start = ee.Date.fromYMD(year, month, 1);
+  var end   = start.advance(1, 'month');
+
+  // -------------------------
+  // VIIRS MONTHLY NTL
+  // -------------------------
+  var viirs = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMCFG')
+    .filterBounds(roi)
+    .filterDate(start, end)
+    .select(['avg_rad', 'cf_cvg']);
+
+  var ntl = safeMean(viirs, 'avg_rad', 'ntl');
+  var cf_cvg = safeMean(viirs, 'cf_cvg', 'cf_cvg');
+
+  // -------------------------
+  // MODIS NIGHT LST (C)
+  // -------------------------
+  var modis = ee.ImageCollection('MODIS/061/MOD11A2')
+    .filterBounds(roi)
+    .filterDate(start, end)
+    .map(maskModisNightLST)
+    .map(function(img) {
+      return img.select('LST_Night_1km')
+        .multiply(0.02)
+        .subtract(273.15)
+        .rename('lst_night_c')
+        .toFloat();
+    });
+
+  var lst = safeMean(modis, 'lst_night_c', 'lst_night_c');
+
+  // -------------------------
+  // SENTINEL-2 SR HARMONIZED
+  // -------------------------
+  var hasS2Period = year.gte(2017);
+
+  var s2Col = ee.ImageCollection(
+    ee.Algorithms.If(
+      hasS2Period,
+      ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+        .filterBounds(roi)
+        .filterDate(start, end)
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 35))
+        .select(['B4', 'B8', 'B11', 'SCL'])
+        .map(cleanS2),
+      ee.ImageCollection([])
+    )
+  );
+
+  var s2MedianBase = ee.Image(
+    ee.Algorithms.If(
+      s2Col.size().gt(0),
+      s2Col.median().toFloat(),
+      ee.Image.cat([
+        emptyMaskedBand('B4'),
+        emptyMaskedBand('B8'),
+        emptyMaskedBand('B11')
+      ])
+    )
+  );
+
+  var s2Median = s2MedianBase.select(
+    ['B4', 'B8', 'B11'],
+    ['B4_med', 'B8_med', 'B11_med']
+  );
+
+  var ndvi = ee.Image(
+    ee.Algorithms.If(
+      s2Col.size().gt(0),
+      s2Col.median()
+        .expression(
+          '(nir - red) / (nir + red)',
+          {
+            nir: s2Col.median().select('B8'),
+            red: s2Col.median().select('B4')
+          }
+        )
+        .rename('ndvi')
+        .toFloat(),
+      emptyMaskedBand('ndvi')
+    )
+  );
+
+  var ndbi = ee.Image(
+    ee.Algorithms.If(
+      s2Col.size().gt(0),
+      s2Col.median()
+        .expression(
+          '(swir - nir) / (swir + nir)',
+          {
+            swir: s2Col.median().select('B11'),
+            nir: s2Col.median().select('B8')
+          }
+        )
+        .rename('ndbi')
+        .toFloat(),
+      emptyMaskedBand('ndbi')
+    )
+  );
+
+  var s2_count = ee.Image.constant(
+      ee.Algorithms.If(hasS2Period, s2Col.size(), -9999)
+    )
+    .rename('s2_count')
+    .clip(roi)
+    .toFloat();
+
+  // -------------------------
+  // STACK RAW FEATURES
+  // -------------------------
+  var sampleImage = ee.Image.cat([
+    ntl,
+    cf_cvg,
+    lst,
+    s2Median,
+    ndvi,
+    ndbi,
+    s2_count
+  ]).clip(roi).toFloat();
+
+  // -------------------------
+  // REDUCE TO 1 KM GRID
+  // -------------------------
+  var out = sampleImage.reduceRegions({
+    collection: grid,
+    reducer: ee.Reducer.mean(),
+    scale: 1000,
+    crs: GRID_PROJ,
+    tileScale: 4
+  }).map(function(f) {
+    var f2 = ee.Feature(f.geometry(), f.toDictionary()).set({
+      year: year,
+      month: month
+    });
+    return fillNullProps(f2);
+  });
+
+  return out;
+}
+
+// =========================
+// YEAR BUILDER
+// =========================
+function buildYear(year) {
+  year = ee.Number(year);
+  var months = ee.List.sequence(1, 12);
+
+  var monthlyCollections = months.map(function(m) {
+    return buildMonth(year, m);
+  });
+
+  return ee.FeatureCollection(monthlyCollections).flatten();
+}
+
+// =========================
+// MAP CHECKS
+// =========================
+Map.centerObject(roi, 7);
+Map.addLayer(targetProvinces, {color: 'red'}, 'Selected Provinces');
+Map.addLayer(
+  grid.style({color: 'yellow', fillColor: '00000000', width: 1}),
+  {},
+  '1km grid'
+);
+
+print('Number of selected provinces:', targetProvinces.size());
+print('Number of grid cells:', grid.size());
+
+// =========================
+// OPTIONAL TEST RUN
+// =========================
+var test = buildMonth(2020, 1);
+print('Test month sample:', test.limit(5));
+
+// quick checks
+print('2020-01 B4 range',
+  test.aggregate_stats('B4_med'));
+print('2020-01 B8 range',
+  test.aggregate_stats('B8_med'));
+print('2020-01 B11 range',
+  test.aggregate_stats('B11_med'));
+print('2020-01 NDVI range',
+  test.aggregate_stats('ndvi'));
+print('2020-01 NDBI range',
+  test.aggregate_stats('ndbi'));
+
+// =========================
+// EXPORT: ONE TASK PER YEAR
+// =========================
+for (var y = START_YEAR; y <= END_YEAR; y++) {
+  var yearlyPanel = buildYear(y);
+
+  Export.table.toDrive({
+    collection: yearlyPanel,
+    description: 'kri_kirkuk_monthly_raw_panel_1km_' + y,
+    fileFormat: 'CSV'
+  });
+}
