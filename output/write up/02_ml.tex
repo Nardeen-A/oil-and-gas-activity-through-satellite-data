@@ -1,0 +1,207 @@
+%=================================================
+% Economics Coursework Template
+%=================================================
+\documentclass[12pt]{article}
+
+%------------ Packages ------------
+\usepackage[margin=1in]{geometry}   % Page layout
+\usepackage{lmodern}                % Latin Modern (LaTeX default font)
+\usepackage{amsmath, amssymb}       % Math symbols
+\usepackage{booktabs}               % Professional tables
+\usepackage{graphicx}               % Figures
+\usepackage{natbib}                 % References
+\usepackage[hidelinks]{hyperref}    % Hyperlinks
+\usepackage{fancyhdr}               % Headers/footers
+\usepackage{setspace}               % Line spacing
+\usepackage{titlesec}               % Section formatting
+\usepackage{comment} 
+\usepackage{xcolor} 
+\usepackage{amsthm} 
+\usepackage{float} 
+\usepackage{dcolumn}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{multicol}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\tikzset{
+  var/.style={rectangle, draw, rounded corners, minimum width=18mm, minimum height=7mm, align=center},
+  latent/.style={ellipse, draw, dashed, minimum width=18mm, minimum height=7mm, align=center},
+  controlarrow/.style={->, dashed, draw=red!60},
+  lightbluearrow/.style={->, dashed, draw=blue!40} % NEW style
+}
+
+%------------ Page Style ------------
+\rhead{\thepage}
+\lhead{ECO1465 Weekly Report 1}
+
+%------------ Section Formatting ------------
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries\itshape}{\thesubsection}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{1.5ex plus 1ex minus .2ex}{1em} % spacing before/after subsections
+
+
+%------------ Begin Document ------------
+\begin{document}
+% Title Page only
+\begin{titlepage}
+    \thispagestyle{empty} % no headers/footers
+    \centering
+    \vspace*{\fill}
+
+    {\Large \textbf{Machine Learning} \par}
+
+    \vspace{3em}
+    {\large Nardeen Abdulkareem \par}
+    {\normalsize The University of Toronto \par}
+    {\normalsize \today \par}
+    {\texttt{nardeen.abdulkareem@mail.utoronto.ca} \par}
+
+    \vspace*{\fill}
+\end{titlepage}
+\clearpage
+% ============================================================
+\section{Extended Results and Model Interpretation}
+% ============================================================
+
+\subsection{Discriminatory Power: ROC and Precision-Recall Performance}
+
+To further evaluate the model's ability to distinguish between oil and gas activity and background observations, we report both ROC-AUC and PR-AUC metrics.
+
+\begin{align*}
+\text{ROC-AUC} &= 0.99945, \\
+\text{PR-AUC}  &= 0.84092.
+\end{align*}
+
+The ROC-AUC being effectively equal to one indicates that the model has near-perfect ranking ability across the full distribution of predicted probabilities. In other words, for almost any randomly drawn positive and negative observation, the model assigns a higher probability to the positive case.
+
+However, given the extreme class imbalance in the dataset, the Precision-Recall AUC is more informative. A PR-AUC of 0.841 indicates that the model maintains high precision even as recall increases, which is critical in rare-event detection problems such as identifying oil and gas sites.
+
+\subsection{Optimal Threshold Selection}
+
+While probabilistic predictions provide ranking, a classification rule requires selecting a threshold. We choose the threshold by maximizing the F1-score, which balances precision and recall:
+
+\begin{align*}
+\text{Optimal Threshold} &= 0.97724, \\
+\text{Best F1-score}     &= 0.76837.
+\end{align*}
+
+The optimal threshold is notably high, reflecting the asymmetric nature of the problem. Because the spatial domain is extremely large, even a small false positive rate can generate thousands of false detections. As a result, the model is tuned to be conservative, only classifying observations as positive when predicted probabilities are very high.
+
+\subsection{Threshold Trade-Offs}
+
+Table~\ref{tab:threshold_ext} illustrates the trade-off between precision and recall across different thresholds.
+
+\begin{table}[H]
+\centering
+\caption{Threshold Trade-Offs}
+\label{tab:threshold_ext}
+\begin{tabular}{lccccc}
+\toprule
+Threshold & Precision & Recall & F1-score & Predicted Positives \\
+\midrule
+0.50 & 0.205 & 0.994 & 0.340 & 14{,}198 \\
+0.70 & 0.307 & 0.991 & 0.469 & 9{,}462 \\
+0.80 & 0.383 & 0.984 & 0.551 & 7{,}533 \\
+0.90 & 0.508 & 0.964 & 0.666 & 5{,}552 \\
+0.977 & 0.759 & 0.778 & 0.768 & 3{,}004 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At low thresholds, the model captures nearly all true sites (recall $> 0.99$) but produces an impractically large number of false positives. As the threshold increases, precision improves substantially, and the number of predicted sites declines sharply. The selected threshold reduces the candidate set to approximately 3,000 grid-month observations while maintaining strong detection performance.
+
+\subsection{Classification Performance at the Optimal Threshold}
+
+At the selected threshold, the classification report is as follows:
+
+\begin{table}[H]
+\centering
+\caption{Classification Performance}
+\label{tab:classification_ext}
+\begin{tabular}{lcccc}
+\toprule
+Class & Precision & Recall & F1-score & Support \\
+\midrule
+0 (Non-site) & 0.999 & 0.999 & 0.999 & 1{,}208{,}352 \\
+1 (Site)     & 0.759 & 0.778 & 0.768 & 2{,}928 \\
+\midrule
+Accuracy     & \multicolumn{4}{c}{0.999} \\
+Macro Avg    & 0.879 & 0.889 & 0.884 & \\
+Weighted Avg & 0.999 & 0.999 & 0.999 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The model performs almost perfectly on the majority class, which dominates the dataset. More importantly, performance on the minority class—the primary object of interest—is strong. A precision of 0.759 implies that roughly three out of four predicted sites correspond to true oil and gas activity, while a recall of 0.778 indicates that the majority of true sites are successfully detected.
+
+\subsection{Confusion Matrix Interpretation}
+
+The confusion matrix provides further insight into classification outcomes:
+
+\begin{align*}
+\begin{bmatrix}
+1{,}207{,}627 & 725 \\
+649 & 2{,}279
+\end{bmatrix}
+\end{align*}
+
+This implies:
+
+\begin{itemize}
+    \item Only 725 false positives across more than 1.2 million negative observations, indicating extremely strong precision in spatial screening.
+    \item 649 false negatives, reflecting the trade-off induced by the high classification threshold.
+    \item A large number of true positives (2,279), demonstrating that the model successfully captures the majority of known sites.
+\end{itemize}
+
+\subsection{Feature Importance and Model Mechanisms}
+
+To understand the drivers of model predictions, we examine permutation importance scores. The most influential features are summarized in Table~\ref{tab:importance_ext}.
+
+\begin{table}[H]
+\centering
+\caption{Top Permutation Importance Features}
+\label{tab:importance_ext}
+\begin{tabular}{lcc}
+\toprule
+Feature & Importance & Std. Dev. \\
+\midrule
+Longitude & 0.666 & 0.021 \\
+Latitude  & 0.558 & 0.013 \\
+Nighttime Lights (ntl) & 0.336 & 0.011 \\
+NTL Anomaly & 0.081 & 0.004 \\
+NTL Rolling (6) & 0.060 & 0.003 \\
+SWIR/NIR Ratio & 0.050 & 0.004 \\
+NTL Rolling (3) & 0.019 & 0.003 \\
+NDBI & 0.014 & 0.003 \\
+LST Indicator & 0.013 & 0.003 \\
+NDBI Anomaly & 0.012 & 0.003 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Several key mechanisms emerge:
+
+\begin{itemize}
+    \item \textbf{Geographic Structure:} Latitude and longitude dominate the importance ranking, indicating that oil and gas activity is highly spatially clustered. The model leverages this structure to improve prediction accuracy.
+    
+    \item \textbf{Persistent Light Emissions:} Nighttime lights (NTL) and related transformations (anomalies and rolling averages) are among the most important predictors. This reflects the strong association between gas flaring and sustained artificial illumination.
+    
+    \item \textbf{Thermal and Spectral Signals:} Features such as SWIR/NIR ratios and land surface temperature capture combustion-related heat signatures and industrial spectral profiles.
+    
+    \item \textbf{Temporal Persistence:} Rolling and anomaly-based features consistently appear among the top predictors, highlighting that persistent, rather than transient, signals are characteristic of true extraction sites.
+\end{itemize}
+
+\subsection{Implications for Detection and Discovery}
+
+The combination of high predictive accuracy and strong precision at elevated thresholds suggests that the model is well-suited for large-scale discovery applications. By dramatically reducing the number of candidate locations while preserving a high share of true positives, the model enables efficient downstream validation using higher-resolution imagery or field verification.
+
+At the same time, the strong importance of spatial coordinates highlights a potential risk of spatial over fitting. Future work should therefore incorporate spatial cross-validation or out-of-region testing to ensure that the model generalizes beyond the observed training regions.
+
+Overall, the results demonstrate that integrating spatial, spectral, and temporal information within a gradient boosting framework provides a powerful and scalable approach to detecting oil and gas activity from satellite data.
+
+
+
+
+\end{document}

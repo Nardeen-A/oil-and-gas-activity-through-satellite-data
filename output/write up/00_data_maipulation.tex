@@ -1,0 +1,366 @@
+%=================================================
+% Economics Coursework Template
+%=================================================
+\documentclass[12pt]{article}
+
+%------------ Packages ------------
+\usepackage[margin=1in]{geometry}   % Page layout
+\usepackage{lmodern}                % Latin Modern (LaTeX default font)
+\usepackage{amsmath, amssymb}       % Math symbols
+\usepackage{booktabs}               % Professional tables
+\usepackage{graphicx}               % Figures
+\usepackage{natbib}                 % References
+\usepackage[hidelinks]{hyperref}    % Hyperlinks
+\usepackage{fancyhdr}               % Headers/footers
+\usepackage{setspace}               % Line spacing
+\usepackage{titlesec}               % Section formatting
+\usepackage{comment} 
+\usepackage{xcolor} 
+\usepackage{amsthm} 
+\usepackage{float} 
+\usepackage{dcolumn}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{multicol}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\tikzset{
+  var/.style={rectangle, draw, rounded corners, minimum width=18mm, minimum height=7mm, align=center},
+  latent/.style={ellipse, draw, dashed, minimum width=18mm, minimum height=7mm, align=center},
+  controlarrow/.style={->, dashed, draw=red!60},
+  lightbluearrow/.style={->, dashed, draw=blue!40} % NEW style
+}
+
+%------------ Page Style ------------
+\rhead{\thepage}
+\lhead{ECO1465 Weekly Report 1}
+
+%------------ Section Formatting ------------
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries\itshape}{\thesubsection}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{1.5ex plus 1ex minus .2ex}{1em} % spacing before/after subsections
+
+
+%------------ Begin Document ------------
+\begin{document}
+% Title Page only
+\begin{titlepage}
+    \thispagestyle{empty} % no headers/footers
+    \centering
+    \vspace*{\fill}
+
+    {\Large \textbf{Data Manipulation} \par}
+
+    \vspace{3em}
+    {\large Nardeen Abdulkareem \par}
+    {\normalsize The University of Toronto \par}
+    {\normalsize \today \par}
+    {\texttt{nardeen.abdulkareem@mail.utoronto.ca} \par}
+
+    \vspace*{\fill}
+\end{titlepage}
+\clearpage
+
+\subsection{Satellite Data Processing and Feature Construction}
+
+To detect oil and gas infrastructure using satellite imagery, we construct a panel dataset combining monthly remote-sensing observations with ground-truth gas flaring detections. The data preparation procedure consists of three stages: (i) cleaning and aggregating flare observations, (ii) processing satellite-derived grid data, and (iii) constructing features designed to capture the physical signatures of oil and gas activity.
+
+\subsubsection{Gas Flaring Data}
+
+We use satellite-detected gas flaring observations as ground-truth indicators of oil and gas activity. The raw flare dataset contains geolocated detections including flare volume, detection frequency, and atmospheric temperature measures.
+
+Several preprocessing steps are applied to ensure reliability. First, missing values coded as \texttt{-9999} are replaced with missing observations. Second, observations lacking valid geographic coordinates are removed. Third, weak detections are filtered by requiring a minimum detection frequency threshold of three observations. Finally, observations with non-positive flare volume are excluded.
+
+Flare observations are then aggregated to construct persistent flare sites. For each geographic location $(\text{lon}, \text{lat})$, we compute the number of detections and summary statistics including mean flare volume, mean temperature, and mean detection frequency. Only locations with at least two flare detections are retained to ensure persistence over time. These locations represent confirmed gas flaring sites and serve as ground-truth indicators of oil and gas infrastructure.
+
+\subsubsection{Satellite Grid Panel}
+
+Satellite-derived environmental data are obtained from Google Earth Engine at a spatial resolution of $1 \times 1$ kilometer and a monthly temporal frequency. The dataset includes spectral reflectance bands from Sentinel-2 imagery, land surface temperature measures, night-time light intensity, and vegetation and built-environment indices.
+
+The primary spectral variables include:
+
+\begin{itemize}
+\item $B4$: red band reflectance
+\item $B8$: near-infrared (NIR) reflectance
+\item $B11$: shortwave infrared (SWIR) reflectance
+\end{itemize}
+
+Near-infrared reflectance ($B8$) is strongly associated with vegetation, while shortwave infrared ($B11$) is sensitive to heat emissions and combustion processes. These bands are particularly informative for detecting gas flaring and industrial activity.
+
+Additional environmental variables include the Normalized Difference Vegetation Index (NDVI), the Normalized Difference Built-up Index (NDBI), night-time light intensity (NTL), and night-time land surface temperature.
+
+Observations with invalid coordinates or missing satellite values are removed. Sentinel-2 coverage counts are also used to filter unreliable observations.
+
+\subsubsection{Feature Engineering}
+
+To improve the ability of machine learning algorithms to detect oil and gas activity, we construct a set of engineered features capturing spectral, thermal, and industrial signatures.
+
+\paragraph{Built Environment Indicators}
+
+Industrial oil infrastructure typically replaces vegetation with built surfaces. To capture this pattern, we construct an industrial surface indicator defined as:
+
+\[
+\text{BuiltIndex}_{it} = \text{NDBI}_{it} - \text{NDVI}_{it}.
+\]
+
+Higher values indicate areas with relatively more built infrastructure and less vegetation.
+
+\paragraph{Spectral Ratios}
+
+Gas flaring and industrial heat emissions produce strong signals in the shortwave infrared band relative to near-infrared reflectance. We therefore construct spectral ratios including:
+
+\[
+\text{SWIR/NIR}_{it} = \frac{B11_{it}}{B8_{it}}
+\]
+
+and
+
+\[
+\text{NIR/Red}_{it} = \frac{B8_{it}}{B4_{it}}.
+\]
+
+Elevated SWIR-to-NIR ratios are indicative of thermal emissions and combustion activity associated with flaring.
+
+\paragraph{Thermal and Luminosity Interaction Features}
+
+Industrial energy infrastructure often produces both heat and artificial illumination. To capture this joint signature, we construct interaction features combining night-time light intensity and surface temperature:
+
+\[
+\text{HeatLight}_{it} = \text{LST}_{it} \times \log(1 + \text{NTL}_{it}).
+\]
+
+These features help distinguish oil and gas facilities from urban areas and natural thermal variation.
+
+\paragraph{Temporal Persistence Measures}
+
+Oil and gas infrastructure is highly persistent over time. To capture this persistence, we compute rolling averages and persistence counts for key variables including night lights, surface temperature, and SWIR reflectance. These measures identify locations exhibiting sustained industrial signals rather than temporary anomalies.
+
+\paragraph{Anomaly Measures}
+
+For each grid cell, we compute deviations from its long-run mean value to identify unusual activity:
+
+\[
+\text{NTLAnom}_{it} = \text{NTL}_{it} - \overline{\text{NTL}}_{i}
+\]
+
+\[
+\text{LSTAnom}_{it} = \text{LST}_{it} - \overline{\text{LST}}_{i}.
+\]
+
+These anomaly measures help isolate structural changes such as the emergence of new infrastructure.
+
+\subsubsection{Construction of Training Labels}
+
+To construct training labels for supervised learning, satellite grid cells are spatially matched to persistent flare sites. A grid cell is classified as an oil and gas location if it lies within one kilometer of a confirmed flare site. This binary indicator serves as the primary target variable used in subsequent machine learning models.
+
+In addition, the minimum distance from each grid cell to the nearest flare site is computed to provide a continuous measure of proximity to known oil and gas infrastructure.
+
+\subsubsection{Final Dataset}
+
+The final machine learning dataset is a monthly grid panel containing spectral features, thermal indicators, built-environment measures, temporal persistence variables, and spatial proximity measures. These variables jointly capture the physical signatures of oil and gas infrastructure observable in satellite imagery.
+
+This dataset forms the basis for the supervised learning models used to detect both known and previously unobserved oil and gas activity.
+
+\subsection{Machine Learning Feature Set}
+
+The final dataset used for machine learning consists of a monthly panel of $1 \times 1$ kilometer grid cells covering the Kurdistan Region of Iraq and the Kirkuk governorate. Each observation corresponds to grid cell $i$ in month $t$. The dataset includes geographic identifiers, raw satellite measurements, engineered features, temporal dynamics, and training labels.
+
+\subsubsection{Spatial and Temporal Identifiers}
+
+Each observation is uniquely identified by a spatial grid cell and a time index.
+
+\begin{itemize}
+\item $grid\_id$: Unique identifier for each $1 \times 1$ kilometer grid cell.
+\item $year$: Calendar year of the observation.
+\item $month$: Calendar month of the observation.
+\item $date$: Monthly timestamp constructed from the year and month variables.
+\item $lon$, $lat$: Geographic coordinates corresponding to the centroid of each grid cell.
+\end{itemize}
+
+These variables define the spatial panel structure used in subsequent machine learning and econometric analysis.
+
+\subsubsection{Raw Spectral Bands}
+
+Three spectral reflectance bands from Sentinel-2 satellite imagery are included:
+
+\begin{itemize}
+\item $B4\_med$: Median red reflectance.
+\item $B8\_med$: Median near-infrared reflectance.
+\item $B11\_med$: Median shortwave infrared reflectance.
+\end{itemize}
+
+These bands capture fundamental physical properties of the Earth's surface. The red band is sensitive to vegetation absorption, the near-infrared band reflects vegetation structure, and the shortwave infrared band is responsive to heat emissions and mineral surfaces. Together, these signals help identify built environments and thermal anomalies associated with oil and gas infrastructure.
+
+\subsubsection{Raw Remote-Sensing Indicators}
+
+The dataset includes several additional environmental indicators derived from satellite observations:
+
+\begin{itemize}
+\item $ndvi$: Normalized Difference Vegetation Index measuring vegetation density.
+\item $ndbi$: Normalized Difference Built-up Index indicating built or impervious surfaces.
+\item $ntl$: Night-time light radiance detected by the VIIRS sensor.
+\item $ntl\_log$: Log transformation of night-time light intensity defined as $\log(1 + NTL)$.
+\item $lst\_night\_c$: Night-time land surface temperature measured in degrees Celsius.
+\item $s2\_count$: Number of Sentinel-2 images available within the monthly observation window.
+\item $cf\_cvg$: Number of cloud-free observations used in the night-light composite.
+\end{itemize}
+
+These variables capture key signals associated with industrial activity, including illumination, heat emissions, vegetation removal, and built infrastructure.
+
+\subsubsection{Engineered Spectral and Industrial Features}
+
+To enhance the ability of machine learning models to detect oil and gas infrastructure, several composite indicators are constructed.
+
+\paragraph{Built Environment Indicator}
+
+The built environment index measures the replacement of vegetation with built surfaces:
+
+\[
+BuiltupIndex_{it} = NDBI_{it} - NDVI_{it}.
+\]
+
+Higher values indicate areas where vegetation has been replaced by industrial or urban infrastructure.
+
+\paragraph{Spectral Ratios}
+
+Spectral ratios highlight abnormal reflectance patterns associated with thermal activity and built surfaces:
+
+\[
+NIRRedRatio_{it} = \frac{B8_{it}}{B4_{it}}
+\]
+
+\[
+SWIRNIRRatio_{it} = \frac{B11_{it}}{B8_{it}}
+\]
+
+\[
+SWIRRedRatio_{it} = \frac{B11_{it}}{B4_{it}}.
+\]
+
+High shortwave-infrared ratios are often associated with combustion processes and gas flaring.
+
+\paragraph{Interaction Features}
+
+Industrial infrastructure frequently produces multiple signals simultaneously. To capture these joint effects, several interaction variables are constructed:
+
+\[
+HeatLight_{it} = LST_{it} \times \log(1 + NTL_{it})
+\]
+
+\[
+BuiltLight_{it} = BuiltupIndex_{it} \times \log(1 + NTL_{it})
+\]
+
+\[
+HeatBuilt_{it} = LST_{it} \times BuiltupIndex_{it}.
+\]
+
+These variables capture the combined presence of heat emissions, artificial illumination, and built surfaces.
+
+\paragraph{Oil Infrastructure Signature Score}
+
+A composite indicator summarizing multiple signals of energy infrastructure is defined as:
+
+\[
+OilSignature_{it} =
+NTL_{it}
++
+BuiltupIndex_{it}
++
+SWIRNIRRatio_{it}
++
+LST_{it}
+-
+NDVI_{it}.
+\]
+
+High values of this score indicate locations exhibiting several characteristics commonly associated with oil and gas facilities.
+
+\subsubsection{Anomaly Measures}
+
+To identify unusual changes within each location, anomaly variables are computed relative to the historical average of each grid cell:
+
+\[
+NTLAnom_{it} = NTL_{it} - \overline{NTL}_i
+\]
+
+\[
+LSTAnom_{it} = LST_{it} - \overline{LST}_i.
+\]
+
+Similar deviations are calculated for vegetation, built surface indicators, and spectral ratios. These variables highlight locations experiencing structural changes or sudden increases in industrial activity.
+
+\subsubsection{Temporal Dynamics and Persistence}
+
+Oil and gas infrastructure typically operates continuously over time. To capture persistence and temporal patterns, several dynamic features are constructed.
+
+\paragraph{Rolling Averages}
+
+Rolling averages smooth short-term fluctuations and emphasize sustained signals:
+
+\[
+NTL^{(3)}_{it} = \frac{1}{3}\sum_{k=0}^{2} NTL_{i,t-k}
+\]
+
+\[
+NTL^{(6)}_{it} = \frac{1}{6}\sum_{k=0}^{5} NTL_{i,t-k}.
+\]
+
+Similar rolling averages are computed for land surface temperature, spectral reflectance, and spectral ratios.
+
+\paragraph{Monthly Changes}
+
+First differences capture sudden changes in satellite signals:
+
+\[
+\Delta NTL_{it} = NTL_{it} - NTL_{i,t-1}
+\]
+
+\[
+\Delta LST_{it} = LST_{it} - LST_{i,t-1}.
+\]
+
+These measures detect abrupt shifts in activity associated with new infrastructure development.
+
+\paragraph{Persistence Indicators}
+
+Persistence variables count the number of months during which key indicators exceed threshold levels. These variables identify locations exhibiting continuous industrial signals rather than temporary environmental fluctuations.
+
+\subsubsection{Seasonal Controls}
+
+Seasonal variation is captured using cyclical transformations of the month variable:
+
+\[
+MonthSin_t = \sin\left(\frac{2\pi \cdot month}{12}\right)
+\]
+
+\[
+MonthCos_t = \cos\left(\frac{2\pi \cdot month}{12}\right).
+\]
+
+These variables allow the machine learning models to account for seasonal patterns in vegetation, temperature, and illumination.
+
+\subsubsection{Training Labels}
+
+Three variables are included to support supervised learning.
+
+\begin{itemize}
+\item $flare\_label$: Binary indicator equal to one if the grid cell lies within one kilometer of a detected gas flare site.
+\item $dist\_to\_flare\_m$: Distance in meters from the grid cell to the nearest flare site.
+\item $oilgas\_candidate$: Indicator identifying locations exhibiting strong signals consistent with potential oil and gas infrastructure.
+\end{itemize}
+
+These labels provide both supervised training targets and auxiliary information for evaluating detection performance.
+
+
+
+
+
+
+
+
+
+
+
+\end{document}

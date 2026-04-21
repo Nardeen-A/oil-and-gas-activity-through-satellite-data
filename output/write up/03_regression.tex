@@ -1,0 +1,198 @@
+%=================================================
+% Economics Coursework Template
+%=================================================
+\documentclass[12pt]{article}
+
+%------------ Packages ------------
+\usepackage[margin=1in]{geometry}   % Page layout
+\usepackage{lmodern}                % Latin Modern (LaTeX default font)
+\usepackage{amsmath, amssymb}       % Math symbols
+\usepackage{booktabs}               % Professional tables
+\usepackage{graphicx}               % Figures
+\usepackage{natbib}                 % References
+\usepackage[hidelinks]{hyperref}    % Hyperlinks
+\usepackage{fancyhdr}               % Headers/footers
+\usepackage{setspace}               % Line spacing
+\usepackage{titlesec}               % Section formatting
+\usepackage{comment} 
+\usepackage{xcolor} 
+\usepackage{amsthm} 
+\usepackage{float} 
+\usepackage{dcolumn}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{multicol}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\tikzset{
+  var/.style={rectangle, draw, rounded corners, minimum width=18mm, minimum height=7mm, align=center},
+  latent/.style={ellipse, draw, dashed, minimum width=18mm, minimum height=7mm, align=center},
+  controlarrow/.style={->, dashed, draw=red!60},
+  lightbluearrow/.style={->, dashed, draw=blue!40} % NEW style
+}
+
+%------------ Page Style ------------
+\rhead{\thepage}
+\lhead{ECO1465 Weekly Report 1}
+
+%------------ Section Formatting ------------
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries\itshape}{\thesubsection}{0.5em}{}
+\titlespacing*{\subsection}{0pt}{1.5ex plus 1ex minus .2ex}{1em} % spacing before/after subsections
+
+
+%------------ Begin Document ------------
+\begin{document}
+% Title Page only
+\begin{titlepage}
+    \thispagestyle{empty} % no headers/footers
+    \centering
+    \vspace*{\fill}
+
+    {\Large \textbf{Regression Results} \par}
+
+    \vspace{3em}
+    {\large Nardeen Abdulkareem \par}
+    {\normalsize The University of Toronto \par}
+    {\normalsize \today \par}
+    {\texttt{nardeen.abdulkareem@mail.utoronto.ca} \par}
+
+    \vspace*{\fill}
+\end{titlepage}
+\clearpage
+\section{Empirical Strategy and Results}
+
+\subsection{Empirical Strategy}
+
+To characterize the dynamics of satellite-detected oil and gas activity, I construct a panel dataset of grid cells observed at the monthly frequency. For each grid cell $i$ and month $t$, I define an indicator variable $\text{HighRisk}_{it}$ equal to one if the predicted probability of oil/gas activity lies in the top 5 percent of the cross-sectional distribution in that period, and zero otherwise.
+
+I begin with a simple linear probability model relating current high-risk status to its lagged value:
+\begin{equation}
+\text{HighRisk}_{it} = \alpha + \beta \, \text{HighRisk}_{i,t-1} + \varepsilon_{it}.
+\end{equation}
+
+To progressively isolate within-location dynamics, I estimate a sequence of increasingly demanding specifications. First, I introduce month fixed effects to absorb common seasonal patterns:
+\begin{equation}
+\text{HighRisk}_{it} = \beta \, \text{HighRisk}_{i,t-1} + \gamma_m + \varepsilon_{it}.
+\end{equation}
+
+Next, I include grid fixed effects to control for time-invariant spatial heterogeneity across locations:
+\begin{equation}
+\text{HighRisk}_{it} = \beta \, \text{HighRisk}_{i,t-1} + \alpha_i + \varepsilon_{it}.
+\end{equation}
+
+My preferred specification includes both grid and month fixed effects:
+\begin{equation}
+\text{HighRisk}_{it} = \beta \, \text{HighRisk}_{i,t-1} + \alpha_i + \gamma_m + \varepsilon_{it}.
+\end{equation}
+
+Finally, I extend the model to include additional lags in order to test whether persistence operates beyond the immediate previous period:
+\begin{equation}
+\text{HighRisk}_{it} = \beta_1 \text{HighRisk}_{i,t-1} + \beta_2 \text{HighRisk}_{i,t-2} + \beta_3 \text{HighRisk}_{i,t-3} + \alpha_i + \gamma_m + \varepsilon_{it}.
+\end{equation}
+
+All specifications are estimated using ordinary least squares with standard errors clustered at the grid level.
+
+\subsection{Results}
+
+Table \ref{tab:persistence_progressive} reports the results.
+
+I begin with a simple OLS specification. The coefficient on lagged high-risk status is 0.485, indicating that a grid cell classified as high-risk in the previous month is approximately 48.5 percentage points more likely to remain high-risk in the current month. This large effect suggests substantial persistence in the raw data.
+
+Adding month fixed effects leaves the estimate essentially unchanged, implying that this persistence is not driven by common seasonal fluctuations. However, once grid fixed effects are introduced, the coefficient declines to approximately 0.30. This reduction indicates that part of the raw persistence reflects permanent differences across locations, with some grid cells being systematically more prone to oil and gas activity than others.
+
+Importantly, a large and highly statistically significant persistence effect remains even after controlling for both grid and month fixed effects. In the preferred specification, lagged high-risk status increases the probability of current high-risk status by 29.6 percentage points. Given that high-risk observations are relatively rare in the sample, this represents a substantial increase and indicates strong within-location state dependence.
+
+I next extend the specification to include additional lags. The coefficient on the first lag remains large and precisely estimated, while the coefficients on the second and third lags are small and statistically insignificant. This pattern indicates that persistence operates primarily through short-run dynamics: the most important predictor of current activity is whether the location was active in the immediately preceding month.
+
+To further assess robustness, I replace the binary high-risk indicator with the continuous predicted probability of oil and gas activity. The lagged probability remains positive and highly significant, confirming that persistence is not an artifact of the thresholding procedure. I also consider alternative definitions of high-risk status based on the top 10 percent and top 1 percent of the distribution. The persistence effect remains strong and statistically significant across these alternative thresholds.
+
+\subsection{Interpretation}
+
+Taken together, these results show that satellite-detected oil and gas activity is not random or transitory. Instead, it exhibits strong persistence over time within the same geographic locations. While some of the raw persistence reflects permanent differences across space, a substantial component remains even after controlling for these factors.
+
+The fact that persistence is concentrated at the one-period horizon suggests that the underlying process is characterized by short-run state dependence. Once a location becomes active, it is much more likely to remain active in the following period, consistent with the presence of fixed infrastructure and ongoing extraction activity.
+
+These findings provide strong validation for the machine learning predictions. The detected signals behave in a manner consistent with real-world oil and gas operations, which are geographically concentrated and operationally persistent rather than sporadic or randomly distributed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\begingroup
+\centering
+\begin{tabular}{lcccccc}
+   \tabularnewline \midrule \midrule
+   Dependent Variable: & \multicolumn{6}{c}{95 Percentile of Probability of Activity}\\
+                   & OLS            & Month FE       & Grid FE        & Grid + Month FE & 2 Lags         & 3 Lags \\   
+   Model:          & (1)            & (2)            & (3)            & (4)             & (5)            & (6)\\  
+   \midrule
+   \emph{Variables}\\
+   Constant        & 0.0229$^{***}$ &                &                &                 &                &   \\   
+                   & (0.0032)       &                &                &                 &                &   \\   
+   High-prob (t-1) & 0.4851$^{***}$ & 0.4844$^{***}$ & 0.3011$^{***}$ & 0.2964$^{***}$  & 0.2759$^{***}$ & 0.2775$^{***}$\\   
+                   & (0.0237)       & (0.0238)       & (0.0236)       & (0.0234)        & (0.0260)       & (0.0267)\\   
+   High-prob (t-2) &                &                &                &                 & 0.0163         & 0.0095\\   
+                   &                &                &                &                 & (0.0167)       & (0.0177)\\   
+   High-prob (t-3) &                &                &                &                 &                & 0.0049\\   
+                   &                &                &                &                 &                & (0.0144)\\   
+   Grid FE         & No             & No             & Yes            & Yes             & Yes            & Yes\\  
+   Month FE        & No             & Yes            & No             & Yes             & Yes            & Yes\\  
+   \midrule
+   Observations    & 18,605         & 18,605         & 18,605         & 18,605          & 18,330         & 18,055\\  
+   R$^2$           & 0.24904        & 0.25666        & 0.34478        & 0.35320         & 0.34348        & 0.34621\\  
+   Adjusted R$^2$  & 0.24900        & 0.25618        & 0.33495        & 0.34310         & 0.33303        & 0.33561\\  
+   Within R$^2$    &                & 0.24772        & 0.09609        & 0.09282         & 0.08206        & 0.08058\\  
+   \midrule \midrule
+   \multicolumn{7}{l}{\emph{Clustered standard-errors in parentheses}}\\
+   \multicolumn{7}{l}{\emph{Signif. Codes: ***: 0.01, **: 0.05, *: 0.1}}\\
+\end{tabular}
+\par\endgroup
+
+\end{document}
