@@ -1,12 +1,11 @@
 proj.path <- getwd()
-features <- read.csv(file.path(proj.path, "output", "data", "diagnostics", "feature_importance.csv"))
+features <- read.csv(file.path(proj.path, "output", "data", "diagnostics", "preferred_model_permutation_importance.csv"))
 
 # ---------------------------------------
 # Confusion matrix (your values)
 # ---------------------------------------
 cm <- matrix(
-  c(1207627, 725,
-    649, 2270),
+  c(1811242, 1286, 1366, 3026),
   nrow = 2,
   byrow = TRUE
 )
@@ -25,16 +24,15 @@ colnames(cm_df) <- c("Actual", "Predicted", "Count")
 # ---------------------------------------
 ggplot(cm_df, aes(x = Predicted, y = Actual, fill = Count)) +
   geom_tile() +
-  geom_text(aes(label = format(Count, big.mark = ",")), size = 5) +
+  geom_text(aes(label = format(Count, big.mark = ",")), size = 7) +
   scale_fill_viridis_c(option = "magma", trans = "log10", alpha = 0.6) +
   labs(
-    title = "Confusion Matrix",
-    subtitle = "Counts shown in cells (log-scaled color for readability)",
     x = "Predicted",
     y = "Actual",
     fill = "Count"
   ) +
   theme(
+    legend.position = "None",
     plot.title = element_text(face = "bold"),
     panel.grid = element_blank()
   )
@@ -59,14 +57,12 @@ ggplot(features_top, aes(x = reorder(feature, importance_mean), y = importance_m
   ) +
   coord_flip() +
   labs(
-    title = "Permutation Feature Importance",
-    subtitle = "Top 15 predictors of oil and gas signals",
     x = NULL,
-    y = "Mean drop in model performance"
+    y = element_blank()
   ) +
   theme(
     plot.title = element_text(face = "bold"),
-    axis.text.y = element_text(size = 11)
+    axis.text.y = element_text(size = 12.5)
   )
 
 

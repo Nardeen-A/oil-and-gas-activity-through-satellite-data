@@ -181,17 +181,17 @@ print(p_heat)
 
 
 
-
+discovery_candidates <- as.data.frame(discovery_candidates)
 
 discovery_candidates_clean <- discovery_candidates[is.finite(lon) & is.finite(lat)]
-discovery_sf <- st_as_sf(discovery_candidates_clean, coords = c("lon", "lat"), crs = 4326)
+discovery_sf <- st_as_sf(discovery_candidates, coords = c("lon", "lat"), crs = 4326)
 
 
-if ("mean_risk" %in% names(discovery_candidates_clean)) {
-  discovery_sf2 <- st_as_sf(discovery_candidates_clean, coords = c("lon", "lat"), crs = 4326)
+if ("mean_risk" %in% names(discovery_candidates)) {
+  discovery_sf2 <- st_as_sf(discovery_candidates, coords = c("lon", "lat"), crs = 4326)
   
   p_discovery_risk <- ggplot() +
-    geom_sf(data = grid_sf, color = "grey85", size = 0.1, alpha = 0.14) +
+    geom_sf(data = grid_sf, color = "grey85", size = 0.03, alpha = 0.14) +
     geom_sf(data = discovery_sf2, aes(color = mean_risk), size = 2.5, alpha = 0.98) +
     scale_color_viridis_c(option = "cividis", name = "") +
     labs(
@@ -245,163 +245,98 @@ if ("max_risk" %in% names(strict_candidates_filtered_clean)) {
 
 
 
+# Extract actual magma colors
+magma_cols <- viridis(10, option = "magma")
 
+flare_col <- magma_cols[6]    # bright red
+discovery_col <- magma_cols[3] # purple
 
+# Known flare sites
 
+flare_sites_clean <- grid_scores %>%
+  filter(flare_label_ever == 1) %>%
+  distinct(grid_id, lon, lat, .keep_all = TRUE) %>%
+  filter(!is.na(lon), !is.na(lat))
 
-df[, month_factor := factor(month)]
+flare_sf <- st_as_sf(flare_sites_clean, coords = c("lon", "lat"), crs = 4326)
 
-fe_model <- lm(pred_prob ~ month_factor, data = df)
-
-df[, pred_deseason := residuals(fe_model)]
-
-ts_p97_fe <- df[
-  is.finite(pred_deseason),
-  .(p97 = quantile(pred_deseason, 0.97, na.rm = TRUE)),
-  by = date
-][order(date)]
-
-ggplot(ts_p97_fe, aes(date, p97)) +
-  geom_line(linewidth = 1) +
-  labs(
-    title = "Deseasonalized Upper-Tail Risk",
-    subtitle = "Month fixed effects removed",
-    y = "Risk (demeaned)",
-    x = NULL
-  )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------
-# 1. Initialize output column
-# ---------------------------------------------------------
-df[, pred_deseason := NA_real_]
-df[, row_id := .I]
-
-# ---------------------------------------------------------
-# 2. Define regression variables
-# ---------------------------------------------------------
-reg_vars <- c(
-  "pred_prob",
-  "grid_id",
-  "month",
-  "ntl_log",
-  "lst_night_c",
-  "ndvi",
-  "ndbi",
-  "cf_cvg",
-  "oil_signature_score",
-  "swir_nir_ratio",
-  "lst_anom",
-  "ntl_roll3",
-  "lst_roll3",
-  "ntl_change",
-  "lst_change"
+# Strict discovery sites
+strict_filtered_sf2 <- st_as_sf(
+  strict_candidates,
+  coords = c("lon", "lat"),
+  crs = 4326
 )
 
-# ---------------------------------------------------------
-# 3. Build complete-case estimation sample
-# ---------------------------------------------------------
-work <- df[
-  complete.cases(df[, ..reg_vars]),
-  c("row_id", "date", reg_vars),
-  with = FALSE
-]
-
-# convert to data.frame for fixest
-work_df <- as.data.frame(work)
-
-# ---------------------------------------------------------
-# 4. Estimate FE model
-# ---------------------------------------------------------
-fe_model <- feols(
-  pred_prob ~
-    ntl_log +
-    lst_night_c +
-    ndvi +
-    ndbi +
-    cf_cvg +
-    oil_signature_score +
-    swir_nir_ratio +
-    lst_anom +
-    ntl_roll3 +
-    lst_roll3 +
-    ntl_change +
-    lst_change
-  | grid_id + month,
-  data = work_df
-)
-
-# ---------------------------------------------------------
-# 5. Recover exact rows used by fixest and assign residuals
-# ---------------------------------------------------------
-used_idx <- obs(fe_model)   # row positions in work_df actually used
-work_df$pred_deseason <- NA_real_
-work_df$pred_deseason[used_idx] <- resid(fe_model)
-
-# map residuals back to original df using row_id
-df[match(work_df$row_id, row_id), pred_deseason := work_df$pred_deseason]
-
-# ---------------------------------------------------------
-# 6. Build robust upper-tail time series
-# ---------------------------------------------------------
-ts_risk <- df[
-  is.finite(pred_deseason) & !is.na(date),
-  {
-    q97 <- quantile(pred_deseason, 0.97, na.rm = TRUE)
-    .(
-      n = .N,
-      p97 = q97,
-      tail_mean97 = mean(pred_deseason[pred_deseason >= q97], na.rm = TRUE)
-    )
-  },
-  by = date
-][order(date)]
-
-# optional: drop months with too few observations
-ts_risk <- ts_risk[n >= 30]
-
-# ---------------------------------------------------------
-# 7. Smooth
-# ---------------------------------------------------------
-ts_risk[, p97_smooth := rollmean(p97, k = 3, fill = NA, align = "center")]
-ts_risk[, tail_mean97_smooth := rollmean(tail_mean97, k = 3, fill = NA, align = "center")]
-
-
-
-ggplot(ts_risk, aes(x = date)) +
-  geom_line(aes(y = tail_mean97), linewidth = 0.5, alpha = 0.35) +
-  geom_line(aes(y = tail_mean97_smooth), linewidth = 1, color = "#3B0F70") +
+# Plot
+p_sites_compare <- ggplot() +
+  
+  # Base grid (softer + cleaner)
+  geom_sf(
+    data = grid_sf,
+    fill = "grey92",
+    color = "grey85",
+    size = 0.1
+  ) +
+  
+  # Discovery sites (slightly larger, soft)
+  geom_sf(
+    data = strict_filtered_sf2,
+    color = discovery_col,
+    size = 1.6,
+    alpha = 0.9
+  ) +
+  
+  # Flare sites (crisp + on top)
+  geom_sf(
+    data = flare_sf,
+    color = flare_col,
+    size = 2.4,
+    alpha = 1
+  ) +
+  
   labs(
-    title = "Deseasonalized Upper-Tail Oil and Gas Risk",
-    subtitle = "Grid and month fixed effects removed; 97th-percentile tail mean with 3-month smoothing",
-    x = NULL,
-    y = "Residualized risk"
+    title = "Known Flare Sites (Pink) vs Predicted Sites (Purple)",
   ) +
-  scale_x_date(
-  date_breaks = "1 year",
-  date_labels = "%Y"
-  ) +
+  
+  coord_sf(expand = TRUE) +
   theme(
-    plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 11)
+    plot.title = element_text(
+      face = "bold",
+      size = 16,
+      hjust = 0.5
+    ),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    
+    # REMOVE AXIS ELEMENTS
+    axis.text = element_blank(),     # numbers
+    axis.ticks = element_blank(),    # ticks
+    axis.title = element_blank(),    # axis labels
   )
+
+print(p_sites_compare)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
