@@ -1,0 +1,2 @@
+model,spec,n_features,threshold_validation_f1,validation_f1_at_threshold,val_pr_auc_cal,test_pr_auc_cal,test_roc_auc_raw,test_brier_cal
+Logistic,reduced,63,0.2222222222222222,0.3875100080059199,0.27110484161184745,0.27773382653263845,0.9726330561493987,0.0019313232585593076
